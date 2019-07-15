@@ -1,0 +1,194 @@
+#   Copyright Red Hat, Inc. All Rights Reserved.
+#
+#   Licensed under the Apache License, Version 2.0 (the "License"); you may
+#   not use this file except in compliance with the License. You may obtain
+#   a copy of the License at
+#
+#       http://www.apache.org/licenses/LICENSE-2.0
+#
+#   Unless required by applicable law or agreed to in writing, software
+#   distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+#   WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+#   License for the specific language governing permissions and limitations
+#   under the License.
+#
+#   Author: David Moreau Simard <dms@redhat.com>
+#   Modified for use on local provisioning: 2019-07-14 gallen
+---
+- hosts: all
+  gather_facts: no
+  vars:
+    - ansible_python_interpreter: /usr/local/bin/python3
+    - ansible_port: 2022
+    - ansible_ssh_extra_args: -o StrictHostKeyChecking=no
+
+  handlers:
+    - name: Restart sshd
+      service:
+        name: sshd
+        state: restarted
+    - name: ipnat
+      service:
+        name: ipnat
+        state: restarted
+        
+  tasks:
+
+    - name: Set configured port fact
+      set_fact:
+        configured_port: "{{ ansible_port }}"
+
+    # From localhost, check if we're able to reach {{ inventory_hostname }} on
+    # port 22
+    - name: Check if we're using the default SSH port
+      wait_for:
+        port: "22"
+        state: "started"
+        host: "{{ inventory_hostname }}"
+        connect_timeout: "5"
+        timeout: "10"
+      delegate_to: "localhost"
+      ignore_errors: "yes"
+      register: default_ssh
+      # when: not (ssh_port_set is defined and ssh_port_set.state is defined and ssh_port_set.state == "started")
+
+    - debug:
+        msg: "{{ default_ssh }}"
+      
+    # If reachable, continue the following tasks with this port
+    - name: Set inventory ansible_port to default
+      set_fact:
+        ansible_port: "22"
+      when: default_ssh is defined
+            and default_ssh.state is defined
+            and default_ssh.state == "started"
+      register: ssh_port_set
+
+    - debug:
+        msg: "{{ ssh_port_set }}"
+
+    # If unreachable on port 22, check if we're able to reach
+    # {{ inventory_hostname }} on {{ ansible_port }} provided by the inventory
+    # from localhost
+    - name: Check if we're using the inventory-provided SSH port
+      wait_for:
+        port: "{{ ansible_port }}"
+        state: "started"
+        host: "{{ inventory_hostname }}"
+        connect_timeout: "5"
+        timeout: "10"
+      delegate_to: "localhost"
+      ignore_errors: "yes"
+      register: configured_ssh
+      when: default_ssh is defined and
+            default_ssh.state is undefined
+            
+    # If {{ ansible_port }} is reachable, we don't need to do anything special
+    - name: SSH port is configured properly
+      debug:
+        msg: "SSH port is configured properly"
+      when: configured_ssh is defined and
+            configured_ssh.state is defined and
+            configured_ssh.state == "started"
+      register: ssh_port_set
+     
+    # If the SSH port is neither the default or the configured, give up.
+    - name: Fail if SSH port was not auto-detected (unknown)
+      fail:
+        msg: "The SSH port is neither 22 or {{ ansible_port }}."
+      when: ssh_port_set is undefined
+     
+    # Sanity check, make sure Ansible is able to connect to the host
+    - name: Confirm host connection works
+      ping:
+     
+    - name: Setup alternate SSH port
+      lineinfile:
+        dest: "/etc/ssh/sshd_config"
+        regexp: "^Port"
+        line: "Port {{ configured_port }}"
+      notify: "Restart sshd"
+     
+    - name: Setup selinux for alternate SSH port
+      seport:
+        ports: "{{ configured_port }}"
+        proto: "tcp"
+        setype: "ssh_port_t"
+        state: "present"
+      when: false
+      # change to system = centos
+     
+    # We notified "Restart sshd" if we modified the sshd config.
+    # By calling flush_handlers, we make sure the handler is run *right now*
+    - name: Ensure SSH is reloaded if need be
+      meta: flush_handlers
+     
+    # We're done, make sure ansible_port is set properly so that any tasks
+    # after this use the right ansible_port.
+    - name: Ensure we use the configured SSH port for the remainder of the role
+      set_fact:
+        ansible_port: "{{ configured_port }}"
+     
+    # Gather facts should be set to false when running this role since it will
+    # fail if the Ansible SSH port is not set correctly.
+    # We run setup to gather facts here once the SSH port is set up.
+    - name: Run deferred setup to gather facts
+      setup:
+
+    - name: install cowrie
+      pkgng:
+        name: git bash
+
+    - name: link bash into /bin
+      file:
+        src: /usr/local/bin/bash
+        dest: /bin/bash
+        owner: root
+        group: wheel
+        state: link
+
+    - name: add cowrie user
+      user:
+        name: cowrie
+        shell: /usr/local/bin/bash
+        groups: nobody
+        generate_ssh_key: yes
+
+    - name: checkout cowrie
+      git:
+        repo: https://github.com/cowrie/cowrie.git
+        dest: /home/cowrie/cowrie
+      become: yes
+      become_user: cowrie
+      become_method: su
+      
+    - name: setup virtualenv
+      shell: |
+        python3.6 -m venv .
+        source bin/activate
+        pip install -U pip
+        pip install -U -r requirements.txt
+        echo '[honeypot]' > cowrie.cfg
+        echo 'hostname = s-r4-tdse3' >> cowrie.cfg
+        echo 'ssh_version_string = SSH-2.0-OpenSSH_5.9p1 Debian-5ubuntu1' >> cowrie.cfg
+        cowrie start
+      args:
+        chdir: /home/cowrie/cowrie
+        executable: /usr/local/bin/bash
+      become: yes
+      become_user: cowrie
+      become_method: su
+              
+    - name: enable ipnat
+      lineinfile:
+        path: /etc/rc.rules
+        regexp: '^ipnat_enable='
+        line: ipnat_enable="YES"
+        create: yes
+        
+    - name: configure port forward
+      lineinfile:
+        path: /etc/ipnat.conf
+        line: rdr vtnet0 0/0 port 22 -> 127.0.0.1 port 2222 tcp
+        create: yes
+      notify: ipnat
