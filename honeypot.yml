@@ -181,14 +181,14 @@
               
     - name: enable ipnat
       lineinfile:
-        path: /etc/rc.rules
+        path: /etc/rc.conf
         regexp: '^ipnat_enable='
         line: ipnat_enable="YES"
         create: yes
         
     - name: configure port forward
       lineinfile:
-        path: /etc/ipnat.conf
+        path: /etc/ipnat.rules
         line: rdr vtnet0 0/0 port 22 -> 127.0.0.1 port 2222 tcp
         create: yes
       notify: ipnat
