@@ -168,17 +168,91 @@
         source bin/activate
         pip install -U pip
         pip install -U -r requirements.txt
-        echo '[honeypot]' > cowrie.cfg
-        echo 'hostname = s-r4-tdse3' >> cowrie.cfg
-        echo 'ssh_version_string = SSH-2.0-OpenSSH_5.9p1 Debian-5ubuntu1' >> cowrie.cfg
-        cowrie start
       args:
         chdir: /home/cowrie/cowrie
         executable: /usr/local/bin/bash
+        creates: /home/cowrie/cowrie/bin/activate
       become: yes
       become_user: cowrie
       become_method: su
-              
+
+    - name: configure cowrie
+      blockinfile:
+        path: /home/cowrie/cowrie/cowrie.cfg
+        block: |
+          [honeypot]
+          hostname = s-r4-tdse3
+          ssh_version_string = SSH-2.0-OpenSSH_5.9p1 Debian-5ubuntu1
+        mode: 0777
+        owner: cowrie
+        group: cowrie
+      notify: "cowrie"
+
+    - name: setup cowrie creds
+      copy:
+        dest: /usr/home/cowrie/cowrie/etc/userdb.txt
+        mode: 0770
+        owner: cowrie
+        group: cowrie
+        content: |
+          root:x:!root
+          root:x:!123456
+          root:x:!/honeypot/i
+          root:x:*
+          tomcat:x:*
+          oracle:x:*
+          # https://github.com/danielmiessler/SecLists/blob/master/Passwords/Default-Credentials/ssh-betterdefaultpasslist.txt
+          Administrator:x:*
+          NetLinx:x:*
+          acitoolkit:x:*
+          admin:x:*
+          administrator:x:*
+          amx:x:*
+          apc:x:*
+          c-comatic:x:*
+          cirros:x:*
+          cisco:x:*
+          cloudera:x:*
+          debian:x:*
+          default:x:*
+          demo:x:*
+          device:x:*
+          elk_user:x:*
+          # enisa:x:*
+          eurek:x:*
+          ftp:x:*
+          fwupgrade:x:*
+          geosolutions:x:*
+          hunter:x:*
+          hxeadm:x:*
+          leo:x:*
+          localadmin:x:*
+          m202:x:*
+          maint:x:*
+          # misp:x:*
+          myshake:x:*
+          nao:x:*
+          netscreen:x:*
+          nexthink:x:*
+          openhabian:x:*
+          osbash:x:*
+          osboxes:x:*
+          pi:x:*
+          plexuser:x:*
+          public:x:*
+          pyimagesearch:x:*
+          # remnux:x:*
+          root:x:*
+          # sans:x:*
+          # sansforensics:x:*
+          sconsole:x:*
+          stackato:x:*
+          support:x:*
+          ubnt:x:*
+          user:x:*
+          vagrant:x:*
+      notify: "cowrie"
+
     - name: enable ipnat
       lineinfile:
         path: /etc/rc.conf
