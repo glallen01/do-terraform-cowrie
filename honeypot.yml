@@ -31,7 +31,17 @@
       service:
         name: ipnat
         state: restarted
-        
+    - name: cowrie
+      shell: |
+        source /home/cowrie/cowrie/bin/activate
+        cowrie restart
+      args:
+        chdir: /home/cowrie/cowrie
+        executable: /usr/local/bin/bash
+      become: yes
+      become_user: cowrie
+      become_method: su
+
   tasks:
 
     - name: Set configured port fact
@@ -135,7 +145,7 @@
     - name: Run deferred setup to gather facts
       setup:
 
-    - name: install cowrie
+    - name: install packages
       pkgng:
         name: git bash
 
@@ -152,7 +162,6 @@
         name: cowrie
         shell: /usr/local/bin/bash
         groups: nobody
-        generate_ssh_key: yes
 
     - name: checkout cowrie
       git:
@@ -266,3 +275,4 @@
         line: rdr vtnet0 0/0 port 22 -> 127.0.0.1 port 2222 tcp
         create: yes
       notify: ipnat
+
