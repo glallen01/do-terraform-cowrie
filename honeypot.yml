@@ -195,6 +195,7 @@
         mode: 0777
         owner: cowrie
         group: cowrie
+        create: yes
       notify: "cowrie"
 
     - name: setup cowrie creds
