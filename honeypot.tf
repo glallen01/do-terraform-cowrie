@@ -1,18 +1,9 @@
-variable "honeyimage" {
-  description = "Droplet Image"
-  default = "freebsd-12-x64-zfs"
-}
-
-variable "honeysize" {
-  description = "Droplet Size"
-  default = "s-1vcpu-1gb"
-}
 
 resource "digitalocean_droplet" "bsdhoney" {
-  image = "${var.honeyimage}"
+  image = "${var.bsdzfsimage}"
   region = "${var.region}"
   name = "${var.deployment_name}-bsdhoney"
-  size = "${var.honeysize}"
+  size = "${var.default_do_size}"
   ssh_keys = ["${digitalocean_ssh_key.default.fingerprint}"]
 
   lifecycle {

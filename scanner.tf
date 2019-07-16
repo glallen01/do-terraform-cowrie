@@ -1,19 +1,9 @@
 
-variable "image" {
-  description = "Droplet Image"
-  default = "freebsd-12-x64-zfs"
-}
-
-variable "size" {
-  description = "Droplet Size"
-  default = "s-1vcpu-1gb"
-}
-
 resource "digitalocean_droplet" "nmap_scanner" {
-  image = "${var.image}"
+  image = "${var.bsdzfsimage}"
   region = "${var.region}"
   name = "${var.deployment_name}-nmap-scanner"
-  size = "${var.size}"
+  size = "${var.default_do_size}"
   ssh_keys = ["${digitalocean_ssh_key.default.fingerprint}"]
 
   lifecycle {
